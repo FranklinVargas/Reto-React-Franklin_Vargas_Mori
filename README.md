@@ -43,3 +43,17 @@ npm run dev   # App en http://localhost:5173
 4. Si tu proveedor requiere TLS, activa `DB_SSL=true` para que la conexión utilice SSL.
 5. (Opcional) Ajusta `DB_POOL_LIMIT` si necesitas controlar la cantidad máxima de conexiones simultáneas que abrirá el backend.
 6. Inicia el servidor con `npm run start` (o configura el proceso según tu plataforma de despliegue) y asegúrate de que la aplicación frontend apunte a la ruta pública del backend (`/api`).
+7. Para un despliegue en el mismo servidor (localhost) basta con que MySQL esté corriendo en `localhost:3306`. El backend intentará crear la base de datos `fractal_db` y las tablas requeridas al arrancar si la cuenta tiene privilegios de creación. Si tu proveedor bloquea esas operaciones, define `DB_PREPARE=false` y gestiona el esquema manualmente.
+
+#### ¿Sin MySQL instalado?
+
+Puedes crear una instancia local rápidamente con Docker:
+
+```bash
+docker run --name fractal-mysql \
+  -e MYSQL_ROOT_PASSWORD=fractal \
+  -e MYSQL_DATABASE=fractal_db \
+  -p 3306:3306 -d mysql:8.0
+```
+
+Luego actualiza `backend/.env` con `DB_PASSWORD=fractal` (o usa el usuario que prefieras). Al iniciar el backend se crearán automáticamente las tablas necesarias.

@@ -17,6 +17,22 @@ const parsePositiveInt = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const readBooleanEnv = (value, fallback) => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+};
+
 const connectionString =
   process.env.DB_URL ||
   process.env.DATABASE_URL ||
@@ -60,7 +76,90 @@ const connectionConfig = connectionString
       database: pickEnv("DB_NAME", "DB_DATABASE") || "fractal_db",
     };
 
-const shouldUseSsl = (process.env.DB_SSL || "").toLowerCase() === "true";
+const shouldUseSsl = readBooleanEnv(process.env.DB_SSL, false);
+const shouldPrepareDatabase = readBooleanEnv(process.env.DB_PREPARE, true);
+
+if (shouldUseSsl && !connectionConfig.ssl) {
+  connectionConfig.ssl = { rejectUnauthorized: false };
+}
+
+const ensureDatabaseExists = async (config) => {
+  const databaseName = config.database;
+  if (!databaseName) {
+    return;
+  }
+
+  try {
+    const connection = await mysql.createConnection(config);
+    await connection.query("SELECT 1");
+    await connection.end();
+  } catch (error) {
+    if (error?.code !== "ER_BAD_DB_ERROR") {
+      throw error;
+    }
+
+    const { database, ...adminConfig } = config;
+    const adminConnection = await mysql.createConnection(adminConfig);
+    await adminConnection.query(
+      `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    await adminConnection.end();
+
+    console.info(`🛠️  Base de datos "${databaseName}" creada automáticamente.`);
+  }
+};
+
+const ensureSchema = async (pool) => {
+  const tables = [
+    {
+      name: "orders",
+      createStatement: `CREATE TABLE IF NOT EXISTS orders (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_number VARCHAR(100) NOT NULL UNIQUE,
+        status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    },
+    {
+      name: "products",
+      createStatement: `CREATE TABLE IF NOT EXISTS products (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    },
+    {
+      name: "order_products",
+      createStatement: `CREATE TABLE IF NOT EXISTS order_products (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_id INT UNSIGNED NOT NULL,
+        product_id INT UNSIGNED NOT NULL,
+        qty INT UNSIGNED NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT order_products_order_fk FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        CONSTRAINT order_products_product_fk FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    },
+  ];
+
+  for (const { name, createStatement } of tables) {
+    const [rows] = await pool.query("SHOW TABLES LIKE ?", [name]);
+    if (rows.length === 0) {
+      await pool.query(createStatement);
+      console.info(`🛠️  Tabla "${name}" creada automáticamente.`);
+    }
+  }
+};
+
+if (shouldPrepareDatabase) {
+  try {
+    await ensureDatabaseExists(connectionConfig);
+  } catch (error) {
+    console.error("❌ No se pudo preparar la base de datos:", error.message);
+    throw error;
+  }
+}
 
 const poolConfig = {
   waitForConnections: true,
@@ -68,8 +167,13 @@ const poolConfig = {
   ...connectionConfig,
 };
 
-if (shouldUseSsl && !poolConfig.ssl) {
-  poolConfig.ssl = { rejectUnauthorized: false };
-}
-
 export const db = await mysql.createPool(poolConfig);
+
+if (shouldPrepareDatabase) {
+  try {
+    await ensureSchema(db);
+  } catch (error) {
+    console.error("❌ No se pudo crear el esquema MySQL:", error.message);
+    throw error;
+  }
+}
