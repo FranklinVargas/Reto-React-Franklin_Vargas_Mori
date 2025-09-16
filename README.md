@@ -14,6 +14,7 @@ Aplicación Fullstack para gestionar productos y órdenes, con un backend en Nod
 - Asociar productos a órdenes con cantidades.  
 
 ## Instalación rápida
+
 ```bash
 # Backend
 cd backend
@@ -24,3 +25,21 @@ npm run dev   # Servidor en http://localhost:4000/api
 cd frontend
 npm install
 npm run dev   # App en http://localhost:5173
+```
+
+## Variables de entorno para despliegue
+
+### Frontend
+
+1. Copia `frontend/.env.example` como `frontend/.env`.
+2. Ajusta `VITE_API_URL` con la URL pública de tu backend (incluye el sufijo `/api`).
+3. Ejecuta `npm run build` dentro de `frontend` y sirve la carpeta `dist` generada.
+
+### Backend
+
+1. Copia `backend/.env.example` como `backend/.env`.
+2. Si tu base de datos está en la nube, reemplaza las variables (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`) con las credenciales provistas.
+3. Alternativamente puedes pegar la cadena completa que entregan servicios como PlanetScale, Railway o Clever Cloud en `DB_URL` (`mysql://usuario:clave@host:puerto/base`). También se aceptan `DATABASE_URL` y `CLEARDB_DATABASE_URL`.
+4. Si tu proveedor requiere TLS, activa `DB_SSL=true` para que la conexión utilice SSL.
+5. (Opcional) Ajusta `DB_POOL_LIMIT` si necesitas controlar la cantidad máxima de conexiones simultáneas que abrirá el backend.
+6. Inicia el servidor con `npm run start` (o configura el proceso según tu plataforma de despliegue) y asegúrate de que la aplicación frontend apunte a la ruta pública del backend (`/api`).
