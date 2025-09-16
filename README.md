@@ -14,6 +14,7 @@ Aplicación Fullstack para gestionar productos y órdenes, con un backend en Nod
 - Asociar productos a órdenes con cantidades.  
 
 ## Instalación rápida
+
 ```bash
 # Backend
 cd backend
@@ -24,3 +25,10 @@ npm run dev   # Servidor en http://localhost:4000/api
 cd frontend
 npm install
 npm run dev   # App en http://localhost:5173
+```
+
+## Variables de entorno para despliegue
+
+1. Copia `frontend/.env.example` como `frontend/.env`.
+2. Ajusta `VITE_API_URL` con la URL pública de tu backend (incluye el sufijo `/api`).
+3. Ejecuta `npm run build` dentro de `frontend` y sirve la carpeta `dist` generada.
