@@ -3,6 +3,15 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const pickEnv = (...keys) => {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(process.env, key)) {
+      return process.env[key];
+    }
+  }
+  return undefined;
+};
+
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -44,11 +53,11 @@ const parseConnectionString = (urlString) => {
 const connectionConfig = connectionString
   ? parseConnectionString(connectionString)
   : {
-      host: process.env.DB_HOST || "localhost",
-      port: parsePositiveInt(process.env.DB_PORT, 3306),
-      user: process.env.DB_USER || "root",
-      password: process.env.DB_PASS || "",
-      database: process.env.DB_NAME || "fractal_db",
+      host: pickEnv("DB_HOST", "DATABASE_HOST") || "localhost",
+      port: parsePositiveInt(pickEnv("DB_PORT", "DATABASE_PORT"), 3306),
+      user: pickEnv("DB_USER", "DB_USERNAME") || "root",
+      password: pickEnv("DB_PASS", "DB_PASSWORD") || "",
+      database: pickEnv("DB_NAME", "DB_DATABASE") || "fractal_db",
     };
 
 const shouldUseSsl = (process.env.DB_SSL || "").toLowerCase() === "true";
