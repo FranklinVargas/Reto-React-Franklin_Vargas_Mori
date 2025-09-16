@@ -32,7 +32,7 @@ npm run dev   # App en http://localhost:5173
 ### Frontend
 
 1. Copia `frontend/.env.example` como `frontend/.env`.
-2. Ajusta `VITE_API_URL` con la URL pública de tu backend (incluye el sufijo `/api`).
+2. Ajusta `VITE_API_URL` con la URL pública de tu backend (incluye el sufijo `/api`). Si ya tienes configuradas variables como `VITE_BACKEND_URL`, `PUBLIC_API_URL` o `API_URL` en tu plataforma de despliegue, el build también las tomará como alias.
 3. Ejecuta `npm run build` dentro de `frontend` y sirve la carpeta `dist` generada.
 
 ### Backend
