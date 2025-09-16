@@ -6,7 +6,11 @@ dotenv.config();
 const pickEnv = (...keys) => {
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(process.env, key)) {
-      return process.env[key];
+      const value = process.env[key];
+      if (typeof value === "string" && value.trim() === "") {
+        continue;
+      }
+      return value;
     }
   }
   return undefined;
@@ -76,11 +80,22 @@ const connectionConfig = connectionString
       database: pickEnv("DB_NAME", "DB_DATABASE") || "fractal_db",
     };
 
+const hostForInference = (connectionConfig.host || "").toLowerCase();
+const inferredSslHosts = [".proxy.rlwy.net", ".railway.app"];
+const shouldForceSslByHost = inferredSslHosts.some((suffix) =>
+  hostForInference.endsWith(suffix)
+);
+
 const shouldUseSsl = readBooleanEnv(process.env.DB_SSL, false);
 const shouldPrepareDatabase = readBooleanEnv(process.env.DB_PREPARE, true);
 
-if (shouldUseSsl && !connectionConfig.ssl) {
+if ((shouldUseSsl || shouldForceSslByHost) && !connectionConfig.ssl) {
   connectionConfig.ssl = { rejectUnauthorized: false };
+  if (shouldForceSslByHost && !shouldUseSsl) {
+    console.info(
+      "🔐 Se habilitó SSL automáticamente por coincidir con un host de Railway"
+    );
+  }
 }
 
 const ensureDatabaseExists = async (config) => {

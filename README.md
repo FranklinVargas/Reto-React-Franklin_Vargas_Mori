@@ -40,7 +40,7 @@ npm run dev   # App en http://localhost:5173
 1. Copia `backend/.env.example` como `backend/.env`.
 2. Si tu base de datos está en la nube, reemplaza las variables (`DB_HOST`, `DB_PORT`, `DB_USER`/`DB_USERNAME`, `DB_PASS`/`DB_PASSWORD`, `DB_NAME`/`DB_DATABASE`) con las credenciales provistas.
 3. Alternativamente puedes pegar la cadena completa que entregan servicios como PlanetScale, Railway o Clever Cloud en `DB_URL` (`mysql://usuario:clave@host:puerto/base`). También se aceptan `DATABASE_URL` y `CLEARDB_DATABASE_URL`.
-4. Si tu proveedor requiere TLS, activa `DB_SSL=true` para que la conexión utilice SSL.
+4. Si tu proveedor requiere TLS, activa `DB_SSL=true` para que la conexión utilice SSL. Si el host termina en `.proxy.rlwy.net` o `.railway.app` (como en Railway), el backend activará SSL automáticamente aunque no definas la variable.
 5. (Opcional) Ajusta `DB_POOL_LIMIT` si necesitas controlar la cantidad máxima de conexiones simultáneas que abrirá el backend.
 6. Inicia el servidor con `npm run start` (o configura el proceso según tu plataforma de despliegue) y asegúrate de que la aplicación frontend apunte a la ruta pública del backend (`/api`).
 7. Para un despliegue en el mismo servidor (localhost) basta con que MySQL esté corriendo en `localhost:3306`. El backend intentará crear la base de datos `fractal_db` y las tablas requeridas al arrancar si la cuenta tiene privilegios de creación. Si tu proveedor bloquea esas operaciones, define `DB_PREPARE=false` y gestiona el esquema manualmente.
