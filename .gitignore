@@ -1,16 +1,17 @@
 # Node
 node_modules/
 dist/
-build/
+
+# Logs
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Python
-__pycache__/
-*.py[cod]
-venv/
-.env
-
-# General
+# Editor
+.vscode/
 .DS_Store
-Thumbs.db
 
+# Python (si mezclas)
+venv/
+__pycache__/
+*.pyc
