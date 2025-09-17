@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
+import {
+  normalizeOrder,
+  normalizeProduct,
+  serializeOrderPayload,
+} from "../utils/apiTransforms";
 import ProductPickerModal from "../components/ProductPickerModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 
@@ -13,6 +18,7 @@ export default function AddOrder() {
   const [dateString, setDateString] = useState(() => new Date().toLocaleString());
   const [products, setProducts] = useState([]);
   const [items, setItems] = useState([]);
+  const [status, setStatus] = useState("Pending");
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
@@ -28,23 +34,26 @@ export default function AddOrder() {
 
   // Cargar productos y orden (si es edición)
   useEffect(() => {
-    api.get("/products").then(res => setProducts(res.data));
+    api.get("/products").then((res) => {
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list.map(normalizeProduct));
+    });
 
     if (isEdit) {
-      api.get(`/orders/${id}`).then(res => {
-        const o = res.data;
-        setOrderNumber(o.orderNumber);
-        setDateString(new Date(o.date).toLocaleString());
+      api.get(`/orders/${id}`).then((res) => {
+        const normalized = normalizeOrder(res.data ?? {});
+        setOrderNumber(normalized.orderNumber ?? "");
+        setStatus(normalized.status ?? "Pending");
+        setDateString(
+          normalized.date ? new Date(normalized.date).toLocaleString() : new Date().toLocaleString()
+        );
         setItems(
-          (o.OrderItems ?? []).map(it => ({
+          normalized.items.map((it) => ({
             productId: it.productId,
-            name: it.Product?.name,
-            unitPrice: Number(it.unitPrice ?? it.Product?.unitPrice),
+            name: it.name,
+            unitPrice: it.unitPrice,
             qty: it.qty,
-            totalPrice: Number(
-              it.totalPrice ??
-              (Number(it.qty) * Number(it.unitPrice ?? it.Product?.unitPrice))
-            ),
+            totalPrice: it.totalPrice,
           }))
         );
       });
@@ -60,14 +69,14 @@ export default function AddOrder() {
     if (!row || !row.productId) return;
 
     if (editIndex === null) {
-      const exists = items.findIndex(it => it.productId === row.productId);
+      const exists = items.findIndex((it) => it.productId === row.productId);
       if (exists !== -1) {
         const copy = [...items];
         copy[exists].qty += row.qty;
         copy[exists].totalPrice = copy[exists].qty * copy[exists].unitPrice;
         setItems(copy);
       } else {
-        setItems(prev => [...prev, row]);
+        setItems((prev) => [...prev, row]);
       }
     } else {
       const copy = [...items];
@@ -85,15 +94,15 @@ export default function AddOrder() {
 
   // Guardar orden en backend
   const persist = async () => {
-    if (!orderNumber.trim()) return alert("Order # is required");
+    const trimmedOrderNumber = orderNumber.trim();
+    if (!trimmedOrderNumber) return alert("Order # is required");
     if (items.length === 0) return alert("Add at least one product");
 
-    const payload = {
-      orderNumber,
-      items: items.map(it => ({ productId: it.productId, qty: it.qty }))
-    };
-
-    console.log("👉 Enviando payload:", payload);
+    const payload = serializeOrderPayload({
+      orderNumber: trimmedOrderNumber,
+      items,
+      status,
+    });
 
     try {
       if (isEdit) await api.put(`/orders/${id}`, payload);
@@ -176,9 +185,9 @@ export default function AddOrder() {
               <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="p-2">{it.productId}</td>
                 <td className="p-2">{it.name}</td>
-                <td className="p-2">S/. {it.unitPrice}</td>
+                <td className="p-2">S/. {it.unitPrice.toFixed(2)}</td>
                 <td className="p-2">{it.qty}</td>
-                <td className="p-2 text-green-700 font-bold">S/. {it.totalPrice}</td>
+                <td className="p-2 text-green-700 font-bold">S/. {it.totalPrice.toFixed(2)}</td>
                 <td className="p-2 flex gap-3">
                   <button onClick={() => openEdit(idx)} className="text-blue-600 hover:underline">✏️ Edit</button>
                   <button onClick={() => askRemove(idx)} className="text-red-600 hover:underline">🗑️ Remove</button>

@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import {
+  normalizeProduct,
+  serializeProductInput,
+} from "../utils/apiTransforms";
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -14,20 +18,27 @@ export default function Products() {
   const fetchProducts = async () => {
     try {
       const res = await api.get("/products");
-      setProducts(res.data);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list.map(normalizeProduct));
     } catch (err) {
       console.error("❌ Error cargando productos:", err);
     }
   };
 
   const addProduct = async () => {
-    if (!name.trim() || !unitPrice) {
+    const trimmedName = name.trim();
+    if (!trimmedName || !unitPrice) {
       alert("Completa los campos");
       return;
     }
 
     try {
-      await api.post("/products", { name, unitPrice: Number(unitPrice) });
+      const payload = serializeProductInput({
+        name: trimmedName,
+        unitPrice: Number(unitPrice),
+      });
+
+      await api.post("/products", payload);
       setName("");
       setUnitPrice("");
       fetchProducts();
@@ -94,7 +105,7 @@ export default function Products() {
             <tr key={p.id} className="border-b">
               <td className="p-2">{p.id}</td>
               <td className="p-2">{p.name}</td>
-              <td className="p-2">S/. {p.unitPrice}</td>
+              <td className="p-2">S/. {p.unitPrice.toFixed(2)}</td>
               <td className="p-2">
                 <button
                   onClick={() => deleteProduct(p.id)}

@@ -39,7 +39,9 @@ export default function ProductPickerModal({
             onChange={e => setProductId(Number(e.target.value))}
           >
             {products.map(p => (
-              <option key={p.id} value={p.id}>{p.name} — S/. {p.unitPrice}</option>
+              <option key={p.id} value={p.id}>
+                {p.name} — S/. {Number(p.unitPrice).toFixed(2)}
+              </option>
             ))}
           </select>
         </div>

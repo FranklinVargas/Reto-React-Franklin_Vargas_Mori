@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
+import { buildStatusPayload, normalizeOrder } from "../utils/apiTransforms";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 export default function MyOrders() {
@@ -8,9 +9,16 @@ export default function MyOrders() {
   const [target, setTarget] = useState(null); // id a borrar
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const formatDate = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+  };
+
   const fetchOrders = async () => {
     const res = await api.get("/orders");
-    setOrders(res.data);
+    const list = Array.isArray(res.data) ? res.data : [];
+    setOrders(list.map(normalizeOrder));
   };
 
   useEffect(() => { fetchOrders(); }, []);
@@ -33,7 +41,7 @@ export default function MyOrders() {
 
   const handleStatus = async (id, status) => {
     try {
-      await api.patch(`/orders/${id}/status`, { status });
+      await api.patch(`/orders/${id}/status`, buildStatusPayload(status));
       fetchOrders();
     } catch (e) {
       alert(e.response?.data?.message || "Error changing status");
@@ -77,9 +85,9 @@ export default function MyOrders() {
               >
                 <td className="p-3">{o.id}</td>
                 <td className="p-3 font-semibold">{o.orderNumber}</td>
-                <td className="p-3">{new Date(o.date).toLocaleString()}</td>
+                <td className="p-3">{formatDate(o.date)}</td>
                 <td className="p-3">{o.productsCount}</td>
-                <td className="p-3 text-green-700 font-bold">S/. {o.finalPrice}</td>
+                <td className="p-3 text-green-700 font-bold">S/. {o.finalPrice.toFixed(2)}</td>
                 <td className="p-3">
                   <select
                     value={o.status}

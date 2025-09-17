@@ -1,5 +1,6 @@
 import { useState } from "react";
 import api from "../services/api";
+import { serializeProductInput } from "../utils/apiTransforms";
 import { useNavigate } from "react-router-dom";
 
 export default function AddProduct() {
@@ -8,13 +9,19 @@ export default function AddProduct() {
   const navigate = useNavigate();
 
   const saveProduct = async () => {
-    if (!name.trim() || !unitPrice) {
+    const trimmedName = name.trim();
+    if (!trimmedName || !unitPrice) {
       alert("Todos los campos son obligatorios");
       return;
     }
 
     try {
-      await api.post("/products", { name, unitPrice: parseFloat(unitPrice) });
+      const payload = serializeProductInput({
+        name: trimmedName,
+        unitPrice: parseFloat(unitPrice),
+      });
+
+      await api.post("/products", payload);
       alert("✅ Producto agregado con éxito");
       navigate("/my-orders"); // redirige a tus órdenes
     } catch (e) {
