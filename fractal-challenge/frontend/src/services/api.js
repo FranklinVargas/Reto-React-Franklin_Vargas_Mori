@@ -1,7 +1,2 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: "http://localhost:4000/api",
-});
-
-export default api;
+// Reutiliza la configuración centralizada de Axios en src/api.js
+export { default } from "../api";
