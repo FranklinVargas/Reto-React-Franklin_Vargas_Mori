@@ -1,16 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import {
   normalizeProduct,
   serializeProductInput,
 } from "../utils/apiTransforms";
 
+const inputClasses =
+  "w-full rounded-2xl border border-white/10 bg-slate-950/50 p-3 text-sm text-slate-100 placeholder-slate-400 shadow-inner focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-400/60";
+
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [name, setName] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
 
-  // cargar productos al inicio
+  const stats = useMemo(() => {
+    if (products.length === 0) {
+      return { count: 0, average: 0, highest: 0 };
+    }
+    const count = products.length;
+    const total = products.reduce((acc, product) => acc + Number(product.unitPrice || 0), 0);
+    const highest = products.reduce(
+      (acc, product) => Math.max(acc, Number(product.unitPrice || 0)),
+      0
+    );
+    return {
+      count,
+      average: total / count,
+      highest,
+    };
+  }, [products]);
+
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -58,73 +77,141 @@ export default function Products() {
     }
   };
 
+  const cards = [
+    {
+      label: "Productos registrados",
+      value: stats.count,
+      accent: "from-sky-500/20 to-indigo-500/20",
+    },
+    {
+      label: "Precio promedio",
+      value: `S/. ${stats.average.toFixed(2)}`,
+      accent: "from-emerald-400/20 to-teal-400/20",
+    },
+    {
+      label: "Producto más costoso",
+      value: `S/. ${stats.highest.toFixed(2)}`,
+      accent: "from-fuchsia-500/20 to-purple-500/20",
+    },
+  ];
+
   return (
-    <div className="max-w-4xl mx-auto mt-6 p-6 bg-white rounded-2xl shadow-lg">
-      {/* Título */}
-      <h1 className="text-3xl font-extrabold text-gray-800 mb-6">
-        📦 Productos
-      </h1>
+    <div className="mx-auto flex max-w-6xl flex-col gap-10">
+      <section className="rounded-3xl border border-white/10 bg-white/10 p-8 shadow-2xl shadow-sky-900/30 backdrop-blur-xl">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-slate-200/70">
+              Catálogo inteligente
+            </p>
+            <h1 className="mt-3 text-4xl font-semibold text-white md:text-5xl">Control de productos</h1>
+            <p className="mt-4 max-w-2xl text-sm text-slate-200/80">
+              Mantén tu inventario siempre actualizado, identifica precios destacados y crea artículos en segundos.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      {/* Sección de agregar producto */}
-      <h2 className="text-xl font-bold text-gray-700 mb-3">➕ Agregar Producto</h2>
-      <div className="flex gap-4 mb-6">
-        <input
-          className="border rounded-lg p-2 flex-1"
-          placeholder="Nombre del producto"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          className="border rounded-lg p-2 w-32"
-          type="number"
-          placeholder="Precio"
-          value={unitPrice}
-          onChange={(e) => setUnitPrice(e.target.value)}
-        />
-        <button
-          onClick={addProduct}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-        >
-          Guardar
-        </button>
-      </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        {cards.map((card) => (
+          <article
+            key={card.label}
+            className={`rounded-3xl border border-white/10 bg-slate-900/70 bg-gradient-to-br ${card.accent} p-6 shadow-lg shadow-slate-950/40 backdrop-blur`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-200/80">
+              {card.label}
+            </p>
+            <p className="mt-4 text-3xl font-semibold text-white">{card.value}</p>
+          </article>
+        ))}
+      </section>
 
-      {/* Tabla de productos */}
-      <h2 className="text-xl font-bold text-gray-700 mb-3">📋 Lista de Productos</h2>
-      <table className="w-full border">
-        <thead className="bg-gray-100 text-gray-700 uppercase text-sm">
-          <tr>
-            <th className="p-2">ID</th>
-            <th className="p-2">Nombre</th>
-            <th className="p-2">Precio</th>
-            <th className="p-2">Opciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((p) => (
-            <tr key={p.id} className="border-b">
-              <td className="p-2">{p.id}</td>
-              <td className="p-2">{p.name}</td>
-              <td className="p-2">S/. {p.unitPrice.toFixed(2)}</td>
-              <td className="p-2">
-                <button
-                  onClick={() => deleteProduct(p.id)}
-                  className="text-red-600 hover:underline"
-                >
-                  🗑️ Eliminar
-                </button>
-              </td>
-            </tr>
-          ))}
-          {products.length === 0 && (
-            <tr>
-              <td colSpan="4" className="text-center text-gray-500 p-4">
-                No hay productos disponibles
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <section className="grid gap-8 lg:grid-cols-[minmax(0,360px),1fr]">
+        <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-slate-950/40 backdrop-blur">
+          <h2 className="text-lg font-semibold text-white">Crear nuevo producto</h2>
+          <p className="mt-2 text-sm text-slate-200/80">
+            Completa el formulario y añade artículos listos para usarse en tus pedidos.
+          </p>
+          <div className="mt-6 space-y-5">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                Nombre del producto
+              </label>
+              <input
+                className={inputClasses}
+                placeholder="Ej: Laptop 14 pulgadas"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                Precio unitario (S/.)
+              </label>
+              <input
+                className={inputClasses}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ej: 2500"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addProduct}
+              className="w-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/40 transition hover:scale-[1.02]"
+            >
+              Guardar producto
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-xl shadow-slate-950/40 backdrop-blur">
+          <div className="border-b border-white/5 bg-white/5 px-6 py-4">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-200/80">
+              Lista de productos
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-white/5 text-sm">
+              <thead className="bg-transparent text-left text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-300/80">
+                <tr>
+                  <th className="px-6 py-4">ID</th>
+                  <th className="px-6 py-4">Nombre</th>
+                  <th className="px-6 py-4">Precio</th>
+                  <th className="px-6 py-4">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-200">
+                {products.map((p, idx) => (
+                  <tr key={p.id} className={idx % 2 === 0 ? "bg-white/5" : "bg-transparent"}>
+                    <td className="px-6 py-4 text-slate-300/80">{p.id}</td>
+                    <td className="px-6 py-4 font-semibold text-white">{p.name}</td>
+                    <td className="px-6 py-4 text-emerald-300 font-semibold">S/. {p.unitPrice.toFixed(2)}</td>
+                    <td className="px-6 py-4">
+                      <button
+                        type="button"
+                        onClick={() => deleteProduct(p.id)}
+                        className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-200 transition hover:bg-rose-500/20"
+                      >
+                        🗑️ Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {products.length === 0 && (
+                  <tr>
+                    <td className="px-6 py-12 text-center text-slate-400" colSpan="4">
+                      No hay productos registrados todavía. ¡Agrega el primero y construye tu catálogo!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
