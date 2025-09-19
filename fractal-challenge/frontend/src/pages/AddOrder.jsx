@@ -110,8 +110,14 @@ export default function AddOrder() {
 
       navigate("/my-orders");
     } catch (e) {
-      console.error("❌ Error guardando:", e.response?.data || e.message);
-      alert(e.response?.data?.message || "Error saving order");
+      const errorPayload = e.response?.data;
+      console.error("❌ Error guardando:", errorPayload || e.message);
+      const errorMessage =
+        errorPayload?.detail ??
+        errorPayload?.message ??
+        errorPayload?.error ??
+        e.message;
+      alert(errorMessage || "Error saving order");
     }
   };
 

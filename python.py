@@ -1,4 +1,5 @@
 # main.py
+import logging
 import os
 import socket
 import sys
@@ -131,6 +132,11 @@ except SQLAlchemyError as exc:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
+
+
+logger = logging.getLogger("python-backend")
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 def ping_database() -> None:
@@ -269,7 +275,16 @@ def add_product(payload: ProductCreate, db: Session = Depends(get_db)):
 
     product = Product(name=normalized_name, unit_price=payload.unit_price)
     db.add(product)
-    db.commit()
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while saving product", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while saving product. Please verify the MySQL connection.",
+        ) from exc
+
     db.refresh(product)
     return product
 
@@ -302,24 +317,32 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db)):
     db.add(new_order)
     db.flush()  # Ensure new_order.id is populated before creating items.
 
-    for item in order.items:
-        product = db.get(Product, item.product_id)
-        if not product:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Product with id {item.product_id} not found",
+    try:
+        for item in order.items:
+            product = db.get(Product, item.product_id)
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Product with id {item.product_id} not found",
+                )
+
+            db.add(
+                OrderItem(
+                    order_id=new_order.id,
+                    product_id=product.id,
+                    qty=item.qty,
+                    total_price=product.unit_price * item.qty,
+                )
             )
 
-        db.add(
-            OrderItem(
-                order_id=new_order.id,
-                product_id=product.id,
-                qty=item.qty,
-                total_price=product.unit_price * item.qty,
-            )
-        )
-
-    db.commit()
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while creating order", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while creating order. Please verify the MySQL connection.",
+        ) from exc
 
     return (
         db.query(Order)
@@ -340,7 +363,16 @@ def update_status(order_id: int, payload: StatusUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="Status is required")
 
     order.status = new_status
-    db.commit()
+
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while updating order status", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating order status. Please verify the MySQL connection.",
+        ) from exc
 
     return (
         db.query(Order)
@@ -383,7 +415,16 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Order not found")
 
     db.delete(order)
-    db.commit()
+
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while deleting order", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while deleting order. Please verify the MySQL connection.",
+        ) from exc
 
 
 if __name__ == "__main__":

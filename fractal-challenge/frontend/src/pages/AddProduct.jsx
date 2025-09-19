@@ -10,22 +10,33 @@ export default function AddProduct() {
 
   const saveProduct = async () => {
     const trimmedName = name.trim();
-    if (!trimmedName || !unitPrice) {
-      alert("Todos los campos son obligatorios");
+    if (!trimmedName) {
+      alert("El nombre del producto es obligatorio");
+      return;
+    }
+
+    const numericPrice = Number(unitPrice);
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      alert("El precio debe ser un número mayor a 0");
       return;
     }
 
     try {
       const payload = serializeProductInput({
         name: trimmedName,
-        unitPrice: parseFloat(unitPrice),
+        unitPrice: numericPrice,
       });
 
       await api.post("/products", payload);
       alert("✅ Producto agregado con éxito");
       navigate("/my-orders"); // redirige a tus órdenes
     } catch (e) {
-      alert(e.response?.data?.message || "Error al guardar");
+      const apiMessage =
+        e.response?.data?.detail ??
+        e.response?.data?.message ??
+        e.response?.data?.error ??
+        e.message;
+      alert(apiMessage || "Error al guardar");
     }
   };
 
