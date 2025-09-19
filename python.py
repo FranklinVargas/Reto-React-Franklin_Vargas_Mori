@@ -1,111 +1,449 @@
 # main.py
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+import logging
+import os
+import socket
+import sys
+from typing import Iterator, List
 
-DATABASE_URL = "mysql+pymysql://root:password@localhost:3306/reto_db"
+from fastapi import Depends, FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm import (
+    Session,
+    declarative_base,
+    relationship,
+    selectinload,
+    sessionmaker,
+)
+from urllib.parse import quote_plus
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine, autoflush=False)
+
+def _resolve_mysql_host() -> str:
+    """Return the host used to connect to MySQL.
+
+    Preference order:
+    1. Explicit MYSQL_HOST env var.
+    2. Docker service name ``mi-mysql-db`` (used in the provided docker run command).
+    3. Localhost, for developers running MySQL locally.
+    """
+
+    host = os.getenv("MYSQL_HOST")
+    if host and host.strip():
+        return host.strip()
+
+    docker_service_name = "mi-mysql-db"
+    try:
+        socket.gethostbyname(docker_service_name)
+        return docker_service_name
+    except socket.gaierror:
+        return "localhost"
+
+
+def _resolve_mysql_password() -> str:
+    """Return the password used to connect to MySQL.
+
+    Checks common env vars and finally falls back to the password shared in the
+    project instructions (``mi-clave-secreta``).
+    """
+
+    for key in ("MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"):
+        value = os.getenv(key)
+        if value is not None and value.strip():
+            return value.strip()
+
+    # Default password used when the MySQL container is started with
+    #   docker run --name mi-mysql-db -e MYSQL_ROOT_PASSWORD=mi-clave-secreta
+    return "mi-clave-secreta"
+
+
+def _resolve_mysql_user() -> str:
+    return (os.getenv("MYSQL_USER") or os.getenv("MYSQL_USERNAME") or "root").strip()
+
+
+def _resolve_mysql_port() -> str:
+    return (os.getenv("MYSQL_PORT") or "3306").strip()
+
+
+def _resolve_mysql_database() -> str:
+    return (
+        os.getenv("MYSQL_DATABASE")
+        or os.getenv("MYSQL_DB")
+        or os.getenv("DATABASE_NAME")
+        or "reto_db"
+    ).strip()
+
+
+def build_database_url() -> str:
+    explicit_url = os.getenv("DATABASE_URL")
+    if explicit_url and explicit_url.strip():
+        return explicit_url.strip()
+
+    user = _resolve_mysql_user()
+    password = quote_plus(_resolve_mysql_password())
+    host = _resolve_mysql_host()
+    port = _resolve_mysql_port()
+    database = _resolve_mysql_database()
+    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+
+
+DATABASE_URL = build_database_url()
+
+
+def _format_database_url_for_display(url: str) -> str:
+    try:
+        db_url = make_url(url)
+    except Exception:
+        return url
+
+    if getattr(db_url, "password", None):
+        db_url = db_url.set(password="***")
+
+    return str(db_url)
+
+def ensure_database_exists(url: str) -> None:
+    db_url = make_url(url)
+    database_name = db_url.database
+
+    if not database_name or not db_url.get_backend_name().startswith("mysql"):
+        return
+
+    server_url = db_url.set(database=None)
+    temp_engine = create_engine(server_url, pool_pre_ping=True, future=True)
+    try:
+        with temp_engine.connect() as connection:
+            connection.execute(
+                text(
+                    f"CREATE DATABASE IF NOT EXISTS `{database_name}` "
+                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+            )
+    finally:
+        temp_engine.dispose()
+
+
+try:
+    ensure_database_exists(DATABASE_URL)
+except SQLAlchemyError as exc:
+    raise RuntimeError(f"Unable to ensure database exists: {exc}") from exc
+
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
+
+
+logger = logging.getLogger("python-backend")
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
+
+
+def ping_database() -> None:
+    """Open a lightweight connection to verify the database is reachable."""
+
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+
 
 # ---------- MODELOS ----------
 class Product(Base):
     __tablename__ = "products"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100))
-    unit_price = Column(Float)
+    name = Column(String(100), nullable=False)
+    unit_price = Column(Float, nullable=False)
+
 
 class OrderItem(Base):
     __tablename__ = "order_items"
+
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"))
-    product_id = Column(Integer, ForeignKey("products.id"))
-    qty = Column(Integer)
-    total_price = Column(Float)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    qty = Column(Integer, nullable=False)
+    total_price = Column(Float, nullable=False)
 
     product = relationship("Product")
+    order = relationship("Order", back_populates="items")
+
 
 class Order(Base):
     __tablename__ = "orders"
+
     id = Column(Integer, primary_key=True, index=True)
-    order_number = Column(String(50), unique=True)
-    status = Column(String(20), default="Pending")
+    order_number = Column(String(50), unique=True, nullable=False)
+    status = Column(String(20), nullable=False, default="Pending")
 
-    items = relationship("OrderItem", cascade="all, delete")
+    items = relationship(
+        "OrderItem",
+        cascade="all, delete-orphan",
+        back_populates="order",
+        passive_deletes=True,
+    )
 
-Base.metadata.create_all(bind=engine)
+
+try:
+    Base.metadata.create_all(bind=engine)
+except SQLAlchemyError as exc:
+    # Re-raise with a clearer message so FastAPI logs expose the root cause.
+    raise RuntimeError(f"Unable to initialize database schema: {exc}") from exc
+
 
 # ---------- SCHEMAS ----------
+class ProductCreate(BaseModel):
+    name: str = Field(..., max_length=100)
+    unit_price: float = Field(..., gt=0)
+
+
+class ProductOut(ProductCreate):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+
 class OrderItemSchema(BaseModel):
     product_id: int
-    qty: int
+    qty: int = Field(..., gt=0)
 
-class OrderSchema(BaseModel):
+
+class OrderCreate(BaseModel):
+    order_number: str = Field(..., max_length=50)
+    items: List[OrderItemSchema]
+
+
+class OrderItemOut(BaseModel):
+    id: int
+    product_id: int
+    qty: int
+    total_price: float
+    product: ProductOut | None = None
+
+    class Config:
+        orm_mode = True
+
+
+class OrderOut(BaseModel):
+    id: int
     order_number: str
-    items: list[OrderItemSchema]
+    status: str
+    items: List[OrderItemOut]
+
+    class Config:
+        orm_mode = True
+
+
+class StatusUpdate(BaseModel):
+    status: str = Field(..., max_length=20)
+
+
+class DatabaseHealth(BaseModel):
+    status: str
+    database_url: str
+    host: str
+    database: str
+
+
+def get_db() -> Iterator[Session]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 # ---------- APP ----------
 app = FastAPI()
 
-# Productos
-@app.get("/api/products")
-def get_products():
-    db = SessionLocal()
-    return db.query(Product).all()
 
-@app.post("/api/products")
-def add_product(p: Product):
-    db = SessionLocal()
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return p
+# Productos
+@app.get("/api/products", response_model=List[ProductOut])
+def get_products(db: Session = Depends(get_db)):
+    return db.query(Product).order_by(Product.id).all()
+
+
+@app.post(
+    "/api/products",
+    response_model=ProductOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_product(payload: ProductCreate, db: Session = Depends(get_db)):
+    normalized_name = payload.name.strip()
+    if not normalized_name:
+        raise HTTPException(status_code=400, detail="Product name is required")
+
+    product = Product(name=normalized_name, unit_price=payload.unit_price)
+    db.add(product)
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while saving product", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while saving product. Please verify the MySQL connection.",
+        ) from exc
+
+    db.refresh(product)
+    return product
+
 
 # Órdenes
-@app.get("/api/orders")
-def get_orders():
-    db = SessionLocal()
-    return db.query(Order).all()
+@app.get("/api/orders", response_model=List[OrderOut])
+def get_orders(db: Session = Depends(get_db)):
+    return (
+        db.query(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.product))
+        .order_by(Order.id)
+        .all()
+    )
 
-@app.post("/api/orders")
-def create_order(order: OrderSchema):
-    db = SessionLocal()
-    new_order = Order(order_number=order.order_number)
+
+@app.post("/api/orders", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
+def create_order(order: OrderCreate, db: Session = Depends(get_db)):
+    normalized_number = order.order_number.strip()
+    if not normalized_number:
+        raise HTTPException(status_code=400, detail="Order number is required")
+
+    existing = db.query(Order).filter(Order.order_number == normalized_number).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Order number already exists")
+
+    if not order.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
+    new_order = Order(order_number=normalized_number)
     db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
+    db.flush()  # Ensure new_order.id is populated before creating items.
 
-    for it in order.items:
-        prod = db.query(Product).filter_by(id=it.product_id).first()
-        if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
-        db.add(OrderItem(
-            order_id=new_order.id,
-            product_id=prod.id,
-            qty=it.qty,
-            total_price=prod.unit_price * it.qty
-        ))
-    db.commit()
-    return {"message": "Order created", "id": new_order.id}
+    try:
+        for item in order.items:
+            product = db.get(Product, item.product_id)
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Product with id {item.product_id} not found",
+                )
 
-@app.patch("/api/orders/{order_id}/status")
-def update_status(order_id: int, status: str):
-    db = SessionLocal()
-    order = db.query(Order).get(order_id)
+            db.add(
+                OrderItem(
+                    order_id=new_order.id,
+                    product_id=product.id,
+                    qty=item.qty,
+                    total_price=product.unit_price * item.qty,
+                )
+            )
+
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while creating order", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while creating order. Please verify the MySQL connection.",
+        ) from exc
+
+    return (
+        db.query(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.product))
+        .filter(Order.id == new_order.id)
+        .one()
+    )
+
+
+@app.patch("/api/orders/{order_id}/status", response_model=OrderOut)
+def update_status(order_id: int, payload: StatusUpdate, db: Session = Depends(get_db)):
+    order = db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    order.status = status
-    db.commit()
-    return {"message": "Status updated"}
 
-@app.delete("/api/orders/{order_id}")
-def delete_order(order_id: int):
-    db = SessionLocal()
-    order = db.query(Order).get(order_id)
+    new_status = payload.status.strip()
+    if not new_status:
+        raise HTTPException(status_code=400, detail="Status is required")
+
+    order.status = new_status
+
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while updating order status", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating order status. Please verify the MySQL connection.",
+        ) from exc
+
+    return (
+        db.query(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.product))
+        .filter(Order.id == order_id)
+        .one()
+    )
+
+
+@app.get("/api/health/database", response_model=DatabaseHealth)
+def database_health_check() -> DatabaseHealth:
+    try:
+        ping_database()
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database connection failed: {exc}",
+        ) from exc
+
+    try:
+        parsed_url = make_url(DATABASE_URL)
+        host = parsed_url.host or _resolve_mysql_host()
+        database = parsed_url.database or _resolve_mysql_database()
+    except Exception:
+        host = _resolve_mysql_host()
+        database = _resolve_mysql_database()
+
+    return DatabaseHealth(
+        status="ok",
+        database_url=_format_database_url_for_display(DATABASE_URL),
+        host=host,
+        database=database,
+    )
+
+
+@app.delete("/api/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
     db.delete(order)
-    db.commit()
-    return {"message": "Order deleted"}
+
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Database error while deleting order", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while deleting order. Please verify the MySQL connection.",
+        ) from exc
+
+
+if __name__ == "__main__":
+    try:
+        ping_database()
+    except SQLAlchemyError as exc:
+        print(f"❌ Error al conectar con MySQL: {exc}")
+        sys.exit(1)
+
+    try:
+        parsed_url = make_url(DATABASE_URL)
+        host = parsed_url.host or _resolve_mysql_host()
+        database = parsed_url.database or _resolve_mysql_database()
+    except Exception:
+        host = _resolve_mysql_host()
+        database = _resolve_mysql_database()
+
+    print(
+        "✅ Conexión a MySQL verificada. "
+        f"Host: {host} | Base de datos: {database} | URL: {_format_database_url_for_display(DATABASE_URL)}"
+    )
+    sys.exit(0)

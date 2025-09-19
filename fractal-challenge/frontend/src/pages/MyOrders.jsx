@@ -1,19 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
+import { buildStatusPayload, normalizeOrder } from "../utils/apiTransforms";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 export default function MyOrders() {
   const [orders, setOrders] = useState([]);
-  const [target, setTarget] = useState(null); // id a borrar
+  const [target, setTarget] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const summary = useMemo(() => {
+    const revenue = orders.reduce((total, order) => total + Number(order.finalPrice || 0), 0);
+    const pending = orders.filter((order) => order.status === "Pending").length;
+    const inProgress = orders.filter((order) => order.status === "InProgress").length;
+    const completed = orders.filter((order) => order.status === "Completed").length;
+    return {
+      total: orders.length,
+      revenue,
+      pending,
+      inProgress,
+      completed,
+    };
+  }, [orders]);
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+  };
 
   const fetchOrders = async () => {
     const res = await api.get("/orders");
-    setOrders(res.data);
+    const list = Array.isArray(res.data) ? res.data : [];
+    setOrders(list.map(normalizeOrder));
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
   const askDelete = (order) => {
     setTarget(order);
@@ -33,99 +57,143 @@ export default function MyOrders() {
 
   const handleStatus = async (id, status) => {
     try {
-      await api.patch(`/orders/${id}/status`, { status });
+      await api.patch(`/orders/${id}/status`, buildStatusPayload(status));
       fetchOrders();
     } catch (e) {
       alert(e.response?.data?.message || "Error changing status");
     }
   };
 
-  return (
-    <div className="max-w-6xl mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-extrabold text-gray-800">📑 My Orders</h1>
-        <Link
-          to="/add-order"
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition"
-        >
-          + New Order
-        </Link>
-      </div>
+  const cards = [
+    {
+      label: "Pedidos totales",
+      value: summary.total,
+      accent: "from-sky-500/20 to-indigo-500/20",
+    },
+    {
+      label: "Ingresos acumulados",
+      value: `S/. ${summary.revenue.toFixed(2)}`,
+      accent: "from-emerald-400/20 to-teal-400/20",
+    },
+    {
+      label: "Pendientes",
+      value: summary.pending,
+      accent: "from-amber-400/20 to-orange-400/20",
+    },
+    {
+      label: "En progreso",
+      value: summary.inProgress,
+      accent: "from-cyan-400/20 to-blue-500/20",
+    },
+    {
+      label: "Completadas",
+      value: summary.completed,
+      accent: "from-purple-500/20 to-fuchsia-500/20",
+    },
+  ];
 
-      {/* Table */}
-      <div className="overflow-x-auto bg-white rounded-xl shadow-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-gray-100 text-gray-700 uppercase text-sm">
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-10">
+      <section className="rounded-3xl border border-white/10 bg-white/10 p-8 shadow-2xl shadow-sky-900/30 backdrop-blur-xl">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-slate-200/70">
+              Panel de pedidos
+            </p>
+            <h1 className="mt-3 text-4xl font-semibold text-white md:text-5xl">Gestiona tus órdenes</h1>
+            <p className="mt-4 max-w-2xl text-sm text-slate-200/80">
+              Visualiza el estado de cada pedido, ajusta su progreso en tiempo real y mantén un control total sobre tus ventas.
+            </p>
+          </div>
+          <Link
+            to="/add-order"
+            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/40 transition hover:scale-[1.03]"
+          >
+            + Nueva orden
+          </Link>
+        </div>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {cards.map((card) => (
+          <article
+            key={card.label}
+            className={`rounded-3xl border border-white/10 bg-slate-900/70 bg-gradient-to-br ${card.accent} p-6 shadow-lg shadow-slate-950/40 backdrop-blur`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-200/80">
+              {card.label}
+            </p>
+            <p className="mt-4 text-3xl font-semibold text-white">{card.value}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-xl shadow-slate-950/40 backdrop-blur">
+        <table className="min-w-full divide-y divide-white/5 text-sm">
+          <thead className="bg-white/5 text-left text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-300/80">
             <tr>
-              <th className="p-3">ID</th>
-              <th className="p-3">Order #</th>
-              <th className="p-3">Date</th>
-              <th className="p-3"># Products</th>
-              <th className="p-3">Final Price</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Options</th>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Orden</th>
+              <th className="px-6 py-4">Fecha</th>
+              <th className="px-6 py-4">Productos</th>
+              <th className="px-6 py-4">Total</th>
+              <th className="px-6 py-4">Estado</th>
+              <th className="px-6 py-4">Acciones</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-white/5 text-slate-200">
             {orders.map((o, idx) => (
-              <tr
-                key={o.id}
-                className={`border-t ${
-                  idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                }`}
-              >
-                <td className="p-3">{o.id}</td>
-                <td className="p-3 font-semibold">{o.orderNumber}</td>
-                <td className="p-3">{new Date(o.date).toLocaleString()}</td>
-                <td className="p-3">{o.productsCount}</td>
-                <td className="p-3 text-green-700 font-bold">S/. {o.finalPrice}</td>
-                <td className="p-3">
+              <tr key={o.id} className={idx % 2 === 0 ? "bg-white/5" : "bg-transparent"}>
+                <td className="px-6 py-4 align-middle text-slate-300/90">{o.id}</td>
+                <td className="px-6 py-4 align-middle font-semibold text-white">{o.orderNumber}</td>
+                <td className="px-6 py-4 align-middle text-slate-200/80">{formatDate(o.date)}</td>
+                <td className="px-6 py-4 align-middle">{o.productsCount}</td>
+                <td className="px-6 py-4 align-middle text-emerald-300 font-semibold">S/. {o.finalPrice.toFixed(2)}</td>
+                <td className="px-6 py-4 align-middle">
                   <select
                     value={o.status}
                     onChange={(e) => handleStatus(o.id, e.target.value)}
-                    className="border rounded-lg p-2 bg-white focus:ring focus:ring-blue-300"
+                    className="rounded-full border border-white/10 bg-slate-950/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 shadow-inner focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-400/60"
                   >
                     <option>Pending</option>
                     <option>InProgress</option>
                     <option>Completed</option>
                   </select>
                 </td>
-                <td className="p-3 flex gap-4">
-                  <Link
-                    to={`/add-order/${o.id}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    ✏️ Edit
-                  </Link>
-                  <button
-                    onClick={() => askDelete(o)}
-                    className="text-red-600 hover:underline"
-                  >
-                    🗑️ Delete
-                  </button>
+                <td className="px-6 py-4 align-middle">
+                  <div className="flex flex-wrap gap-3">
+                    <Link
+                      to={`/add-order/${o.id}`}
+                      className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-sky-200 transition hover:bg-sky-500/20"
+                    >
+                      ✏️ Editar
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => askDelete(o)}
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-200 transition hover:bg-rose-500/20"
+                    >
+                      🗑️ Eliminar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
             {orders.length === 0 && (
               <tr>
-                <td
-                  className="p-4 text-center text-gray-500"
-                  colSpan="7"
-                >
-                  No orders yet.
+                <td className="px-6 py-12 text-center text-slate-400" colSpan="7">
+                  Aún no has registrado pedidos. Crea el primero para comenzar a medir tu impacto.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
+      </section>
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         open={confirmOpen}
-        title="Delete order"
-        message={`Are you sure you want to delete order "${target?.orderNumber}"?`}
+        title="Eliminar pedido"
+        message={`¿Seguro que deseas eliminar la orden "${target?.orderNumber}"?`}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={doDelete}
       />
