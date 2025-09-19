@@ -1,6 +1,7 @@
 # main.py
 import os
 import socket
+import sys
 from typing import Iterator, List
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -88,6 +89,18 @@ def build_database_url() -> str:
 
 DATABASE_URL = build_database_url()
 
+
+def _format_database_url_for_display(url: str) -> str:
+    try:
+        db_url = make_url(url)
+    except Exception:
+        return url
+
+    if getattr(db_url, "password", None):
+        db_url = db_url.set(password="***")
+
+    return str(db_url)
+
 def ensure_database_exists(url: str) -> None:
     db_url = make_url(url)
     database_name = db_url.database
@@ -118,6 +131,13 @@ except SQLAlchemyError as exc:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
+
+
+def ping_database() -> None:
+    """Open a lightweight connection to verify the database is reachable."""
+
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
 
 
 # ---------- MODELOS ----------
@@ -210,6 +230,13 @@ class OrderOut(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str = Field(..., max_length=20)
+
+
+class DatabaseHealth(BaseModel):
+    status: str
+    database_url: str
+    host: str
+    database: str
 
 
 def get_db() -> Iterator[Session]:
@@ -323,6 +350,32 @@ def update_status(order_id: int, payload: StatusUpdate, db: Session = Depends(ge
     )
 
 
+@app.get("/api/health/database", response_model=DatabaseHealth)
+def database_health_check() -> DatabaseHealth:
+    try:
+        ping_database()
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database connection failed: {exc}",
+        ) from exc
+
+    try:
+        parsed_url = make_url(DATABASE_URL)
+        host = parsed_url.host or _resolve_mysql_host()
+        database = parsed_url.database or _resolve_mysql_database()
+    except Exception:
+        host = _resolve_mysql_host()
+        database = _resolve_mysql_database()
+
+    return DatabaseHealth(
+        status="ok",
+        database_url=_format_database_url_for_display(DATABASE_URL),
+        host=host,
+        database=database,
+    )
+
+
 @app.delete("/api/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_order(order_id: int, db: Session = Depends(get_db)):
     order = db.get(Order, order_id)
@@ -331,3 +384,25 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
 
     db.delete(order)
     db.commit()
+
+
+if __name__ == "__main__":
+    try:
+        ping_database()
+    except SQLAlchemyError as exc:
+        print(f"❌ Error al conectar con MySQL: {exc}")
+        sys.exit(1)
+
+    try:
+        parsed_url = make_url(DATABASE_URL)
+        host = parsed_url.host or _resolve_mysql_host()
+        database = parsed_url.database or _resolve_mysql_database()
+    except Exception:
+        host = _resolve_mysql_host()
+        database = _resolve_mysql_database()
+
+    print(
+        "✅ Conexión a MySQL verificada. "
+        f"Host: {host} | Base de datos: {database} | URL: {_format_database_url_for_display(DATABASE_URL)}"
+    )
+    sys.exit(0)

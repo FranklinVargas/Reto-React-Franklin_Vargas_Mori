@@ -53,6 +53,24 @@ Variables de entorno relevantes:
 > `docker run --name mi-mysql-db -e MYSQL_ROOT_PASSWORD=mi-clave-secreta ...`
 > para que el backend pueda conectarse sin configuración adicional.
 
+### Verificar la conexión con MySQL (Docker)
+
+El backend incluye un chequeo rápido para confirmar que el contenedor
+`mi-mysql-db` está accesible. Ejecuta uno de los siguientes comandos:
+
+```bash
+# Comprobación directa desde la línea de comandos
+python python.py
+
+# Con el servidor levantado (uvicorn) expone un endpoint de salud
+curl http://localhost:4000/api/health/database | jq
+```
+
+Si la conexión es correcta verás un mensaje con el host, la base de datos y
+la URL (sin exponer la contraseña). Cualquier error en la conexión hará que el
+comando salga con código distinto de cero y mostrará el detalle del fallo
+reportado por MySQL/SQLAlchemy.
+
 ## Variables de entorno para despliegue
 
 1. Copia `frontend/.env.example` como `frontend/.env`.
