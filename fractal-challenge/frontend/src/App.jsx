@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import ProductsPage from "./pages/ProductsPage";
 import OrdersPage from "./pages/OrdersPage";
 import OrderProductsPage from "./pages/OrderProductsPage";
@@ -48,10 +48,11 @@ function App() {
         {/* 🔹 Contenido */}
         <div className="container mx-auto px-6 py-8">
           <Routes>
-            <Route path="/" element={<ProductsPage />} />
+            <Route path="/" element={<Navigate to="/products" replace />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/order-products" element={<OrderProductsPage />} />
+            <Route path="*" element={<Navigate to="/products" replace />} />
           </Routes>
         </div>
       </div>

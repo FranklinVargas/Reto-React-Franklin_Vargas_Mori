@@ -1,6 +1,33 @@
 import { Router } from "express";
 import { db } from "../db.js";
 
+const normalizeProduct = (row) => ({
+  ...row,
+  price:
+    typeof row.price === "string" && row.price.trim() !== ""
+      ? Number(row.price)
+      : row.price,
+});
+
+const parsePayload = (body) => {
+  const rawName = typeof body?.name === "string" ? body.name.trim() : "";
+  const rawPrice = body?.price;
+  const parsedPrice = Number(rawPrice);
+
+  if (!rawName) {
+    return { error: "El nombre del producto es obligatorio" };
+  }
+
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    return { error: "El precio debe ser un número mayor a 0" };
+  }
+
+  return {
+    name: rawName,
+    price: parsedPrice,
+  };
+};
+
 const router = Router();
 
 /**
@@ -8,8 +35,8 @@ const router = Router();
  */
 router.get("/", async (_req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM products");
-    res.json(rows);
+    const [rows] = await db.query("SELECT * FROM products ORDER BY created_at DESC");
+    res.json(rows.map(normalizeProduct));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -20,10 +47,12 @@ router.get("/", async (_req, res) => {
  */
 router.post("/", async (req, res) => {
   try {
-    const { name, price } = req.body;
-    if (!name || !price) {
-      return res.status(400).json({ error: "Faltan campos" });
+    const parsedPayload = parsePayload(req.body);
+    if (parsedPayload.error) {
+      return res.status(400).json({ error: parsedPayload.error });
     }
+
+    const { name, price } = parsedPayload;
 
     const [result] = await db.query(
       "INSERT INTO products (name, price) VALUES (?, ?)",
@@ -48,7 +77,7 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Producto no encontrado" });
     }
 
-    res.json(rows[0]);
+    res.json(normalizeProduct(rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -60,15 +89,24 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price } = req.body;
+    const parsedPayload = parsePayload(req.body);
+    if (parsedPayload.error) {
+      return res.status(400).json({ error: parsedPayload.error });
+    }
 
-    await db.query("UPDATE products SET name=?, price=? WHERE id=?", [
+    const { name, price } = parsedPayload;
+
+    const [result] = await db.query("UPDATE products SET name=?, price=? WHERE id=?", [
       name,
       price,
       id,
     ]);
 
-    res.json({ id, name, price });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    res.json({ id: Number(id), name, price });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
