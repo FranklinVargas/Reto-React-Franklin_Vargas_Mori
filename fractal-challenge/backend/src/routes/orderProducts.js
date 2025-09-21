@@ -3,26 +3,40 @@ import { db } from "../db.js";
 
 const router = Router();
 
+const parsePositiveInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+};
+
 /**
  * Agregar un producto a una orden
  */
 router.post("/", async (req, res) => {
   try {
-    console.log("Body recibido:", req.body); // 👈 Para depuración
+    const orderId = parsePositiveInt(req.body?.order_id);
+    const productId = parsePositiveInt(req.body?.product_id);
+    const quantity = parsePositiveInt(req.body?.qty);
 
-    const { order_id, product_id, qty } = req.body;
-    if (!order_id || !product_id || !qty) {
-      return res.status(400).json({ error: "Faltan campos" });
+    if (!orderId || !productId || !quantity) {
+      return res.status(400).json({
+        error: "Debes enviar order_id, product_id y qty como enteros mayores a 0",
+      });
     }
 
     const [result] = await db.query(
       "INSERT INTO order_products (order_id, product_id, qty) VALUES (?, ?, ?)",
-      [order_id, product_id, qty]
+      [orderId, productId, quantity]
     );
 
-    res
-      .status(201)
-      .json({ id: result.insertId, order_id, product_id, qty });
+    res.status(201).json({
+      id: result.insertId,
+      order_id: orderId,
+      product_id: productId,
+      qty: quantity,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -55,14 +69,24 @@ router.get("/:order_id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { qty } = req.body;
+    const quantity = parsePositiveInt(req.body?.qty);
 
-    await db.query("UPDATE order_products SET qty=? WHERE id=?", [
-      qty,
+    if (!quantity) {
+      return res
+        .status(400)
+        .json({ error: "La cantidad debe ser un entero mayor a 0" });
+    }
+
+    const [result] = await db.query("UPDATE order_products SET qty=? WHERE id=?", [
+      quantity,
       id,
     ]);
 
-    res.json({ id, qty });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Producto no encontrado en la orden" });
+    }
+
+    res.json({ id: Number(id), qty: quantity });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
