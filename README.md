@@ -53,6 +53,20 @@ Variables de entorno relevantes:
 > `docker run --name mi-mysql-db -e MYSQL_ROOT_PASSWORD=mi-clave-secreta ...`
 > para que el backend pueda conectarse sin configuración adicional.
 
+### Levantar MySQL con Docker
+
+En la raíz del repositorio encontrarás un `docker-compose.yml` que arranca
+un contenedor MySQL configurado exactamente como lo espera el proyecto.
+
+```bash
+docker compose up -d
+```
+
+Esto crea el contenedor `mi-mysql-db` con la base `reto_db`, el usuario root
+con contraseña `mi-clave-secreta` y los esquemas/tables necesarios. El script
+de inicialización se encuentra en `docker/mysql/init.sql` y también carga
+algunos productos de ejemplo si la tabla está vacía.
+
 ### Verificar la conexión con MySQL (Docker)
 
 El backend incluye un chequeo rápido para confirmar que el contenedor
