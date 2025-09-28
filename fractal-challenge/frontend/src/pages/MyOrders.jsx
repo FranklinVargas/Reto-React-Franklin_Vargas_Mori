@@ -5,7 +5,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 
 export default function MyOrders() {
   const [orders, setOrders] = useState([]);
-  const [target, setTarget] = useState(null); // id a borrar
+  const [target, setTarget] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const fetchOrders = async () => {
@@ -41,66 +41,51 @@ export default function MyOrders() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-extrabold text-gray-800">📑 My Orders</h1>
-        <Link
-          to="/add-order"
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition"
-        >
-          + New Order
-        </Link>
+    <div className="page">
+      <div className="page__header">
+        <h1 className="page__title">📑 My Orders</h1>
+        <Link to="/add-order" className="btn btn--success">+ New Order</Link>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto bg-white rounded-xl shadow-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-gray-100 text-gray-700 uppercase text-sm">
+      <div className="table-container">
+        <table className="table">
+          <thead>
             <tr>
-              <th className="p-3">ID</th>
-              <th className="p-3">Order #</th>
-              <th className="p-3">Date</th>
-              <th className="p-3"># Products</th>
-              <th className="p-3">Final Price</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Options</th>
+              <th>ID</th>
+              <th>Order #</th>
+              <th>Date</th>
+              <th># Products</th>
+              <th>Final Price</th>
+              <th>Status</th>
+              <th>Options</th>
             </tr>
           </thead>
           <tbody>
-            {orders.map((o, idx) => (
-              <tr
-                key={o.id}
-                className={`border-t ${
-                  idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                }`}
-              >
-                <td className="p-3">{o.id}</td>
-                <td className="p-3 font-semibold">{o.orderNumber}</td>
-                <td className="p-3">{new Date(o.date).toLocaleString()}</td>
-                <td className="p-3">{o.productsCount}</td>
-                <td className="p-3 text-green-700 font-bold">S/. {o.finalPrice}</td>
-                <td className="p-3">
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td>{o.id}</td>
+                <td className="text-strong">{o.orderNumber}</td>
+                <td>{new Date(o.date).toLocaleString()}</td>
+                <td>{o.productsCount}</td>
+                <td className="text-success">S/. {o.finalPrice}</td>
+                <td>
                   <select
                     value={o.status}
                     onChange={(e) => handleStatus(o.id, e.target.value)}
-                    className="border rounded-lg p-2 bg-white focus:ring focus:ring-blue-300"
+                    className="select"
                   >
                     <option>Pending</option>
                     <option>InProgress</option>
                     <option>Completed</option>
                   </select>
                 </td>
-                <td className="p-3 flex gap-4">
-                  <Link
-                    to={`/add-order/${o.id}`}
-                    className="text-blue-600 hover:underline"
-                  >
+                <td className="actions">
+                  <Link to={`/add-order/${o.id}`} className="btn btn--link">
                     ✏️ Edit
                   </Link>
                   <button
                     onClick={() => askDelete(o)}
-                    className="text-red-600 hover:underline"
+                    className="btn btn--link btn--danger-link"
                   >
                     🗑️ Delete
                   </button>
@@ -109,10 +94,7 @@ export default function MyOrders() {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td
-                  className="p-4 text-center text-gray-500"
-                  colSpan="7"
-                >
+                <td className="table__empty" colSpan="7">
                   No orders yet.
                 </td>
               </tr>
@@ -121,7 +103,6 @@ export default function MyOrders() {
         </table>
       </div>
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         open={confirmOpen}
         title="Delete order"

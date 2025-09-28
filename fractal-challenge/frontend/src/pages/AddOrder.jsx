@@ -19,14 +19,12 @@ export default function AddOrder() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [removeIndex, setRemoveIndex] = useState(null);
 
-  // Totales
   const totals = useMemo(() => {
     const productsCount = items.reduce((a, b) => a + Number(b.qty), 0);
     const finalPrice = items.reduce((a, b) => a + Number(b.totalPrice), 0);
     return { productsCount, finalPrice };
   }, [items]);
 
-  // Cargar productos y orden (si es edición)
   useEffect(() => {
     api.get("/products").then(res => setProducts(res.data));
 
@@ -51,11 +49,9 @@ export default function AddOrder() {
     }
   }, [id, isEdit]);
 
-  // Abrir modal para agregar
   const openAdd = () => { setEditIndex(null); setPickerOpen(true); };
   const openEdit = (idx) => { setEditIndex(idx); setPickerOpen(true); };
 
-  // Guardar producto del modal
   const saveFromPicker = (row) => {
     if (!row || !row.productId) return;
 
@@ -83,7 +79,6 @@ export default function AddOrder() {
     setConfirmOpen(false);
   };
 
-  // Guardar orden en backend
   const persist = async () => {
     if (!orderNumber.trim()) return alert("Order # is required");
     if (items.length === 0) return alert("Add at least one product");
@@ -93,120 +88,105 @@ export default function AddOrder() {
       items: items.map(it => ({ productId: it.productId, qty: it.qty }))
     };
 
-    console.log("👉 Enviando payload:", payload);
-
     try {
       if (isEdit) await api.put(`/orders/${id}`, payload);
       else await api.post("/orders", payload);
 
       navigate("/my-orders");
     } catch (e) {
-      console.error("❌ Error guardando:", e.response?.data || e.message);
       alert(e.response?.data?.message || "Error saving order");
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto mt-6 p-6 bg-white rounded-2xl shadow-lg space-y-6">
-      <h1 className="text-3xl font-extrabold text-gray-800">
-        {isEdit ? "✏️ Edit Order" : "➕ Add New Order"}
-      </h1>
+    <div className="page">
+      <div className="card stack">
+        <h1 className="page__title">{isEdit ? "✏️ Edit Order" : "➕ Add New Order"}</h1>
 
-      {/* Datos de la orden */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-gray-600 text-sm mb-1">Order Number</label>
-          <input
-            className="border rounded-lg w-full p-3 focus:ring focus:ring-blue-300"
-            value={orderNumber}
-            onChange={e => setOrderNumber(e.target.value)}
-          />
+        <div className="form-grid form-grid--two">
+          <div className="field">
+            <label>Order Number</label>
+            <input
+              className="input"
+              value={orderNumber}
+              onChange={e => setOrderNumber(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Date</label>
+            <input
+              className="input input--muted"
+              value={dateString}
+              disabled
+            />
+          </div>
+          <div className="field">
+            <label># Products</label>
+            <input
+              className="input input--muted"
+              value={totals.productsCount}
+              disabled
+            />
+          </div>
+          <div className="field">
+            <label>Final Price</label>
+            <input
+              className="input input--muted input--strong"
+              value={`S/. ${totals.finalPrice.toFixed(2)}`}
+              disabled
+            />
+          </div>
         </div>
-        <div>
-          <label className="block text-gray-600 text-sm mb-1">Date</label>
-          <input
-            className="border rounded-lg w-full p-3 bg-gray-100"
-            value={dateString}
-            disabled
-          />
-        </div>
-        <div>
-          <label className="block text-gray-600 text-sm mb-1"># Products</label>
-          <input
-            className="border rounded-lg w-full p-3 bg-gray-100"
-            value={totals.productsCount}
-            disabled
-          />
-        </div>
-        <div>
-          <label className="block text-gray-600 text-sm mb-1">Final Price</label>
-          <input
-            className="border rounded-lg w-full p-3 bg-gray-100 font-bold text-green-700"
-            value={`S/. ${totals.finalPrice.toFixed(2)}`}
-            disabled
-          />
-        </div>
-      </div>
 
-      {/* Tabla de productos */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">Products</h2>
-        <button
-          onClick={openAdd}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow"
-        >
-          + Add Item
-        </button>
-      </div>
+        <div className="section-header">
+          <h2 className="section-title">Products</h2>
+          <button onClick={openAdd} className="btn btn--success">+ Add Item</button>
+        </div>
 
-      <div className="overflow-x-auto rounded border">
-        <table className="w-full text-left">
-          <thead className="bg-gray-100 text-gray-700 uppercase text-sm">
-            <tr>
-              <th className="p-2">ID</th>
-              <th className="p-2">Name</th>
-              <th className="p-2">Unit Price</th>
-              <th className="p-2">Qty</th>
-              <th className="p-2">Total Price</th>
-              <th className="p-2">Options</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="p-2">{it.productId}</td>
-                <td className="p-2">{it.name}</td>
-                <td className="p-2">S/. {it.unitPrice}</td>
-                <td className="p-2">{it.qty}</td>
-                <td className="p-2 text-green-700 font-bold">S/. {it.totalPrice}</td>
-                <td className="p-2 flex gap-3">
-                  <button onClick={() => openEdit(idx)} className="text-blue-600 hover:underline">✏️ Edit</button>
-                  <button onClick={() => askRemove(idx)} className="text-red-600 hover:underline">🗑️ Remove</button>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
+        <div className="table-wrapper">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan="6" className="p-4 text-center text-gray-500">
-                  No products in this order.
-                </td>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Unit Price</th>
+                <th>Qty</th>
+                <th>Total Price</th>
+                <th>Options</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((it, idx) => (
+                <tr key={idx}>
+                  <td>{it.productId}</td>
+                  <td>{it.name}</td>
+                  <td>S/. {it.unitPrice}</td>
+                  <td>{it.qty}</td>
+                  <td className="text-success">S/. {it.totalPrice}</td>
+                  <td className="actions">
+                    <button onClick={() => openEdit(idx)} className="btn btn--link">✏️ Edit</button>
+                    <button onClick={() => askRemove(idx)} className="btn btn--link btn--danger-link">🗑️ Remove</button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="table__empty">
+                    No products in this order.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex-gap-sm flex-justify-end">
+          <button onClick={persist} className="btn btn--primary">
+            💾 {isEdit ? "Update Order" : "Save Order"}
+          </button>
+        </div>
       </div>
 
-      {/* Botón Guardar */}
-      <div className="flex justify-end">
-        <button
-          onClick={persist}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow"
-        >
-          💾 {isEdit ? "Update Order" : "Save Order"}
-        </button>
-      </div>
-
-      {/* Modales */}
       <ProductPickerModal
         open={pickerOpen}
         products={products}
